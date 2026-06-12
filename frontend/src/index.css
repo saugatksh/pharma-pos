@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+* { font-family: 'Inter', sans-serif; }
+
+/* ── Dark mode CSS variables ── */
+:root {
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-sidebar: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+  --bg-header: #ffffff;
+  --border-card: #f1f5f9;
+  --border-header: #e2e8f0;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --bg-table-head: #f8fafc;
+  --bg-table-row-hover: #f8fafc;
+  --bg-input: #ffffff;
+  --border-input: #e2e8f0;
+  --bg-badge-neutral: #f1f5f9;
+  --text-badge-neutral: #475569;
+}
+
+.dark {
+  --bg-page: #0f172a;
+  --bg-card: #1e293b;
+  --bg-sidebar: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+  --bg-header: #1e293b;
+  --border-card: #334155;
+  --border-header: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --bg-table-head: #1e293b;
+  --bg-table-row-hover: #293548;
+  --bg-input: #1e293b;
+  --border-input: #334155;
+  --bg-badge-neutral: #334155;
+  --text-badge-neutral: #94a3b8;
+}
+
+@layer base {
+  html { @apply scroll-smooth; }
+  body { background: var(--bg-page); color: var(--text-primary); transition: background 0.2s, color 0.2s; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-emerald-600 to-green-600 text-white px-4 py-2 rounded-xl
+           hover:from-emerald-700 hover:to-green-700 transition-all duration-200 font-medium
+           disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md
+           hover:-translate-y-0.5 active:translate-y-0;
+  }
+  .btn-secondary {
+    @apply px-4 py-2 rounded-xl border transition-all duration-150 font-medium shadow-sm;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-card);
+  }
+  .btn-secondary:hover { filter: brightness(0.95); }
+  .btn-danger {
+    @apply bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-xl
+           hover:from-red-600 hover:to-red-700 transition-all duration-150 font-medium shadow-sm;
+  }
+  .input {
+    @apply w-full rounded-xl px-3 py-2.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent
+           transition-all duration-150;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-primary);
+  }
+  .input::placeholder { color: var(--text-muted); }
+  .card {
+    @apply rounded-2xl shadow-sm p-6 transition-shadow duration-200;
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+  }
+  .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .dark .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .badge-green { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700; }
+  .badge-red { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700; }
+  .badge-yellow { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700; }
+  .badge-blue { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700; }
+  .badge-purple { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700; }
+  .badge-gray { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold; background: var(--bg-badge-neutral); color: var(--text-badge-neutral); }
+  
+  /* Dark mode table */
+  .dm-table-head { background: var(--bg-table-head); }
+  .dm-row-hover:hover { background: var(--bg-table-row-hover) !important; }
+  .dm-border { border-color: var(--border-card); }
+  .dm-text-primary { color: var(--text-primary); }
+  .dm-text-secondary { color: var(--text-secondary); }
+  .dm-text-muted { color: var(--text-muted); }
+  .dm-bg-card { background: var(--bg-card); }
+  .dm-border-card { border-color: var(--border-card); }
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeInUp { animation: fadeInUp 0.35s ease forwards; }
+.animate-fadeIn { animation: fadeIn 0.25s ease forwards; }
+.animate-scaleIn { animation: scaleIn 0.25s ease forwards; }
+.animate-slideDown { animation: slideDown 0.2s ease forwards; }
+
+/* Page transitions */
+main > * { animation: fadeInUp 0.3s ease; }
+
+/* Print styles */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; font-family: 'Inter', sans-serif; color: #000 !important; }
+  @page { margin: 10mm; size: 80mm auto; }
+  #pharmacy-bill { 
+    position: static !important; 
+    width: 100% !important;
+    max-width: 72mm;
+    margin: 0 auto;
+    padding: 0 !important;
+  }
+  #pharmacy-bill * { 
+    visibility: visible !important;
+    color: #000 !important;
+    background: white !important;
+    border-color: #ccc !important;
+  }
+  .bill-header-icon { display: none !important; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* Table row hover */
+tbody tr { transition: background 0.1s ease; }
+
+/* Sidebar collapsed */
+.sidebar-collapsed .nav-label { display: none; }
+.sidebar-collapsed .role-badge { display: none; }
+.sidebar-collapsed .user-name { display: none; }
+.sidebar-collapsed .pharmacy-name { display: none; }
+
+/* ── Theme toggle animation ── */
+@keyframes themeFlash {
+  0%   { opacity: 0; }
+  30%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes sunSpin {
+  from { transform: rotate(0deg) scale(1); }
+  50%  { transform: rotate(180deg) scale(1.3); }
+  to   { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes moonBounce {
+  0%   { transform: translateY(0) rotate(0deg); }
+  40%  { transform: translateY(-4px) rotate(-20deg); }
+  70%  { transform: translateY(2px) rotate(10deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+@keyframes rippleOut {
+  0%   { box-shadow: 0 0 0 0px rgba(251,191,36,0.4); }
+  100% { box-shadow: 0 0 0 14px rgba(251,191,36,0); }
+}
+
+@keyframes rippleOutDark {
+  0%   { box-shadow: 0 0 0 0px rgba(99,102,241,0.4); }
+  100% { box-shadow: 0 0 0 14px rgba(99,102,241,0); }
+}
+
+/* Page smooth transition on theme change */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+*, *::before, *::after {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+/* But don't transition transforms/animations - would feel sluggish */
+.nav-item, button, a, input, select, textarea {
+  transition: background-color 0.25s ease, border-color 0.2s ease, color 0.2s ease,
+              transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease !important;
+}
