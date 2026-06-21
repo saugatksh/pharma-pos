@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { Modal, ConfirmDialog, Pagination, LoadingSpinner, EmptyState, SearchInput, Badge, Table } from '../components/UI';
@@ -103,6 +104,31 @@ function parseCSV(text) {
   return results;
 }
 
+// Normalize raw rows (array of objects with arbitrary header casing/spacing)
+// into the same shape parseCSV() produces, restricted to known CSV_HEADERS.
+function normalizeRows(rawRows) {
+  return rawRows.map(raw => {
+    const obj = {};
+    Object.keys(raw).forEach(key => {
+      const cleanKey = key.trim().toLowerCase();
+      if (CSV_HEADERS.includes(cleanKey)) {
+        const v = raw[key];
+        obj[cleanKey] = v === null || v === undefined ? '' : String(v).trim();
+      }
+    });
+    return obj;
+  }).filter(obj => Object.keys(obj).length > 0);
+}
+
+// Parses an .xlsx/.xls workbook (first sheet) into the same row shape as parseCSV()
+function parseXLSX(arrayBuffer) {
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[firstSheetName];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  return normalizeRows(rawRows);
+}
+
 export default function MedicinesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -127,6 +153,13 @@ export default function MedicinesPage() {
   const [csvProgress, setCsvProgress] = useState({ done: 0, total: 0, errors: [] });
   const csvInputRef = useRef(null);
 
+  // Bulk delete states
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+
   const fetchMedicines = useCallback(async () => {
     setLoading(true);
     try {
@@ -143,6 +176,7 @@ export default function MedicinesPage() {
   useEffect(() => { fetchMedicines(); }, [fetchMedicines]);
   useEffect(() => { api.get('/medicines/categories').then(r => setCategories(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { setPage(1); }, [search, categoryFilter]);
+  useEffect(() => { setSelectedIds([]); }, [page, search, categoryFilter]);
 
   const openCreate = () => { setEditing(null); setForm(defaultForm); setShowModal(true); };
   const openEdit = (m) => { setEditing(m); setForm({ ...m, category_id: m.category_id || '' }); setShowModal(true); };
@@ -175,24 +209,98 @@ export default function MedicinesPage() {
     } catch { toast.error('Failed to delete'); }
   };
 
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const allOnPageSelected = medicines.length > 0 && medicines.every(m => selectedIds.includes(m.id));
+
+  const toggleSelectAllOnPage = () => {
+    if (allOnPageSelected) {
+      setSelectedIds(prev => prev.filter(id => !medicines.some(m => m.id === id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...medicines.map(m => m.id)])));
+    }
+  };
+
+  // Deletes a list of medicine IDs one by one, showing progress, then refreshes.
+  const deleteIdsWithProgress = async (ids) => {
+    setBulkDeleting(true);
+    setBulkProgress({ done: 0, total: ids.length });
+    let failCount = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await api.delete(`/medicines/${ids[i]}`);
+      } catch {
+        failCount++;
+      }
+      setBulkProgress({ done: i + 1, total: ids.length });
+    }
+    setBulkDeleting(false);
+    if (failCount === 0) {
+      toast.success(`✅ Deleted ${ids.length} medicine(s)`);
+    } else {
+      toast.error(`Deleted ${ids.length - failCount}, failed ${failCount}`);
+    }
+    setSelectedIds([]);
+    fetchMedicines();
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    setConfirmBulkDelete(false);
+    await deleteIdsWithProgress(selectedIds);
+  };
+
+  // Deletes EVERY medicine matching the current search/category filter, across all pages.
+  const handleDeleteAll = async () => {
+    setConfirmDeleteAll(false);
+    setBulkDeleting(true);
+    try {
+      const params = new URLSearchParams({ page: 1, limit: 100000 });
+      if (search) params.set('search', search);
+      if (categoryFilter) params.set('category_id', categoryFilter);
+      const { data } = await api.get(`/medicines?${params}`);
+      const ids = data.data.map(m => m.id);
+      if (ids.length === 0) {
+        setBulkDeleting(false);
+        return toast.error('No medicines to delete');
+      }
+      await deleteIdsWithProgress(ids);
+    } catch {
+      setBulkDeleting(false);
+      toast.error('Failed to load medicines for deletion');
+    }
+  };
+
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.name.endsWith('.csv')) return toast.error('Please upload a .csv file');
+    const lowerName = file.name.toLowerCase();
+    const isCSV = lowerName.endsWith('.csv');
+    const isExcel = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+    if (!isCSV && !isExcel) {
+      return toast.error('Please upload a .csv or .xlsx file');
+    }
     setCsvUploading(true);
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const parsed = parseCSV(evt.target.result);
-        if (parsed.length === 0) { toast.error('No valid rows found in CSV'); setCsvUploading(false); return; }
+        const parsed = isCSV
+          ? parseCSV(evt.target.result)
+          : parseXLSX(evt.target.result);
+        if (parsed.length === 0) { toast.error('No valid rows found in file'); setCsvUploading(false); return; }
         setCsvPreviewData(parsed);
         setShowCsvPreview(true);
       } catch {
-        toast.error('Failed to parse CSV');
+        toast.error(isCSV ? 'Failed to parse CSV' : 'Failed to parse Excel file');
       }
       setCsvUploading(false);
     };
-    reader.readAsText(file);
+    if (isCSV) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
     e.target.value = '';
   };
 
@@ -236,6 +344,26 @@ export default function MedicinesPage() {
   };
 
   const columns = [
+    ...(isAdmin ? [{
+      label: (
+        <input
+          type="checkbox"
+          checked={allOnPageSelected}
+          onChange={toggleSelectAllOnPage}
+          className="w-4 h-4 cursor-pointer"
+        />
+      ),
+      className: 'w-10',
+      render: m => (
+        <input
+          type="checkbox"
+          checked={selectedIds.includes(m.id)}
+          onChange={() => toggleSelect(m.id)}
+          className="w-4 h-4 cursor-pointer"
+          onClick={e => e.stopPropagation()}
+        />
+      ),
+    }] : []),
     { label: 'Medicine', key: 'name', render: m => (
       <div>
         <div className="font-medium dm-text-primary">{m.name}</div>
@@ -279,9 +407,14 @@ export default function MedicinesPage() {
               <button onClick={() => csvInputRef.current?.click()}
                 disabled={csvUploading}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-all shadow-sm disabled:opacity-50">
-                ⬆️ {csvUploading ? 'Reading...' : 'Upload CSV'}
+                ⬆️ {csvUploading ? 'Reading...' : 'Upload CSV / Excel'}
               </button>
-              <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVUpload} />
+              <input ref={csvInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleCSVUpload} />
+              <button onClick={() => setConfirmDeleteAll(true)}
+                disabled={bulkDeleting || medicines.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-all shadow-sm disabled:opacity-50">
+                🗑️ Delete All
+              </button>
               <button onClick={openCreate} className="btn-primary">+ Add Medicine</button>
             </>
           )}
@@ -293,9 +426,9 @@ export default function MedicinesPage() {
         <div className="flex items-start gap-3">
           <span className="text-2xl">💡</span>
           <div>
-            <div className="text-sm font-semibold dm-text-primary">Bulk Import via CSV</div>
+            <div className="text-sm font-semibold dm-text-primary">Bulk Import via CSV / Excel</div>
             <div className="text-xs dm-text-muted mt-0.5">
-              Download the demo CSV with 50 sample medicines → edit/add your own → upload to import all at once.
+              Download the demo CSV with 50 sample medicines → edit/add your own → upload as .csv or .xlsx to import all at once.
               Columns: <code className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 px-1 rounded text-xs">name, generic_name, brand_name, category, unit, purchase_price, selling_price, min_stock_level, description</code>
             </div>
           </div>
@@ -315,9 +448,35 @@ export default function MedicinesPage() {
         </div>
       </div>
 
+      {/* Bulk selection action bar */}
+      {isAdmin && selectedIds.length > 0 && (
+        <div className="card p-3 flex items-center justify-between flex-wrap gap-2 border-l-4 border-blue-500">
+          <div className="text-sm font-medium dm-text-primary">
+            {selectedIds.length} medicine{selectedIds.length > 1 ? 's' : ''} selected
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setSelectedIds([])} className="btn-secondary text-sm">Clear</button>
+            <button onClick={() => setConfirmBulkDelete(true)}
+              disabled={bulkDeleting}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-all shadow-sm disabled:opacity-50">
+              🗑️ Delete Selected
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="card p-0 overflow-hidden">
-        {loading ? <LoadingSpinner /> : medicines.length === 0 ? (
+        {bulkDeleting ? (
+          <div className="text-center py-10">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-red-500 mx-auto mb-4" />
+            <div className="text-lg font-bold dm-text-primary">{bulkProgress.done} / {bulkProgress.total}</div>
+            <div className="dm-text-muted text-sm mt-1">Deleting medicines…</div>
+            <div className="w-64 mx-auto mt-3 rounded-full h-2 dm-bg-card border dm-border-card overflow-hidden">
+              <div className="h-2 bg-red-500 rounded-full transition-all" style={{ width: `${(bulkProgress.done / Math.max(bulkProgress.total, 1)) * 100}%` }} />
+            </div>
+          </div>
+        ) : loading ? <LoadingSpinner /> : medicines.length === 0 ? (
           <EmptyState icon="💊" title="No medicines found"
             subtitle={search ? 'Try a different search term' : 'Add medicines or import via CSV to get started'}
             action={isAdmin && (
@@ -451,6 +610,20 @@ export default function MedicinesPage() {
         open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete}
         title="Delete Medicine" message="Are you sure you want to delete this medicine? This action cannot be undone."
         confirmText="Delete" type="danger"
+      />
+
+      <ConfirmDialog
+        open={confirmBulkDelete} onClose={() => setConfirmBulkDelete(false)} onConfirm={handleBulkDeleteSelected}
+        title="Delete Selected Medicines"
+        message={`Are you sure you want to delete ${selectedIds.length} selected medicine(s)? This action cannot be undone.`}
+        confirmText="Delete Selected" type="danger"
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteAll} onClose={() => setConfirmDeleteAll(false)} onConfirm={handleDeleteAll}
+        title="Delete ALL Medicines"
+        message={`This will permanently delete ${search || categoryFilter ? 'every medicine matching the current filters' : 'EVERY medicine in your catalogue'}. This action cannot be undone. Are you absolutely sure?`}
+        confirmText="Delete All" type="danger"
       />
     </div>
   );

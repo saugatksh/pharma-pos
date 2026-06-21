@@ -169,7 +169,15 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-center text-xs text-slate-500 mt-6">
-            PharmaPOS v1.0 · Secure Pharmacy Management
+            PharmaPOS - Developed by{" "}
+            <a
+              href="https://www.saugatbohara.com.np"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline hover:text-blue-800"
+            >
+              Saugat Bohara
+            </a>
           </p>
         </div>
       </div>
