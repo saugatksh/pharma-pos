@@ -51,31 +51,29 @@ api.interceptors.response.use(
     }
 
     // Token expired — try refresh
-    if (error.response?.status === 401 && !original._retry) {
-      const code = error.response?.data?.code;
+    if (error.response?.status === 401 && error.response?.data?.code === 'TOKEN_EXPIRED' && !original._retry) {
       original._retry = true;
-
-      if (code === 'TOKEN_EXPIRED') {
-        try {
-          const refreshToken = localStorage.getItem('refreshToken');
-          if (!refreshToken) throw new Error('No refresh token');
-          const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { timeout: 10000 });
-          localStorage.setItem('accessToken', data.accessToken);
-          localStorage.setItem('refreshToken', data.refreshToken);
-          original.headers.Authorization = `Bearer ${data.accessToken}`;
-          return api(original);
-        } catch (refreshError) {
-          localStorage.clear();
-          window.location.href = '/login';
-          return Promise.reject(refreshError);
-        }
-      } else {
-        // No token / invalid token / user not found — just send to login
+      try {
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (!refreshToken) throw new Error('No refresh token');
+        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { timeout: 10000 });
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        original.headers.Authorization = `Bearer ${data.accessToken}`;
+        return api(original);
+      } catch (refreshError) {
+        // If refresh fails due to suspension/expiry, store the reason
+        const refreshCode = refreshError.response?.data?.code;
+        const refreshMsg = refreshError.response?.data?.message;
         localStorage.clear();
+        if (refreshCode === 'PHARMACY_SUSPENDED' || refreshCode === 'SUBSCRIPTION_EXPIRED') {
+          sessionStorage.setItem('authError', refreshMsg);
+        }
         window.location.href = '/login';
-        return Promise.reject(error);
+        return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );
